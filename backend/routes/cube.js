@@ -29,27 +29,25 @@ router.post("/cube-mapping", async (req, res) => {
 });
 
 router.post("/cube-status", async (req, res) => {
-  const { cube_id, status } = req.body; // status: 'inserted' 또는 'removed'
+  const { user_id, cube_id, status } = req.body; // status: 'inserted' 또는 'removed'
 
   try {
     const today = new Date().toISOString().split("T")[0];
 
-    // 1. 오늘 날짜 + cube_id로 어떤 사용자의 큐브인지 조회
+    // 1. user_id + cube_id + 오늘 날짜로 정확히 하나의 큐브 확인
     const [slotRows] = await pool.query(
-      `SELECT user_id FROM cube_slots WHERE cube_id = ? AND target_date = ?`,
-      [cube_id, today]
+      `SELECT id FROM cube_slots WHERE user_id = ? AND cube_id = ? AND target_date = ?`,
+      [user_id, cube_id, today]
     );
 
     if (slotRows.length === 0) {
       return res.status(404).json({ ok: false, error: "해당 큐브 정보를 찾을 수 없습니다" });
     }
 
-    const userId = slotRows[0].user_id;
-
     // 2. cube_slots 상태 업데이트
     await pool.query(
-      `UPDATE cube_slots SET status = ? WHERE cube_id = ? AND target_date = ?`,
-      [status, cube_id, today]
+      `UPDATE cube_slots SET status = ? WHERE user_id = ? AND cube_id = ? AND target_date = ?`,
+      [status, user_id, cube_id, today]
     );
 
     // 3. "removed"(약을 꺼냄)일 때만 복약 기록 남김
@@ -57,7 +55,7 @@ router.post("/cube-status", async (req, res) => {
       // 3-1. 이 사용자의 등록된 아침/저녁 시간 조회
       const [scheduleRows] = await pool.query(
         `SELECT period, time FROM schedules WHERE user_id = ?`,
-        [userId]
+        [user_id]
       );
 
       if (scheduleRows.length === 0) {
@@ -85,7 +83,7 @@ router.post("/cube-status", async (req, res) => {
       await pool.query(
         `INSERT INTO medication_logs (user_id, cube_id, target_date, period, confirmed_at, method)
          VALUES (?, ?, ?, ?, NOW(), 'sensor')`,
-        [userId, cube_id, today, closestPeriod]
+        [user_id, cube_id, today, closestPeriod]
       );
     }
 
