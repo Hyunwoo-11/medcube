@@ -4,6 +4,7 @@ const pool = require("./db");
 const authRoutes = require("./routes/auth");
 const scheduleRoutes = require("./routes/schedule");
 const usersRoutes = require("./routes/users");
+const cubeRoutes = require("./routes/cube");
 
 const app = express();
 app.use(express.json());  
@@ -15,6 +16,8 @@ app.get("/", (req, res) => {
 app.use("/api", authRoutes);  
 app.use("/api", scheduleRoutes);
 app.use("/api", usersRoutes);
+app.use("/api", cubeRoutes);
+
 
 
 app.listen(process.env.PORT, async () => {
