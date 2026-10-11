@@ -3,7 +3,7 @@
 //
 // 서버 주소는 frontend/.env.local 의 EXPO_PUBLIC_API_URL 로 지정합니다.
 //   예) EXPO_PUBLIC_API_URL=http://172.20.10.8:3000
-// (핫스팟이 바뀌면 맥 IP가 바뀌므로 이 한 줄만 고치면 됩니다. 값을 바꾸면 expo를 재시작하세요.)
+// (핫스팟으로 테스트시 IP가 바뀌므로 이 한 줄만 고치면 됩니다. 값을 바꾼후 expo 재시작하기)
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const TIMEOUT_MS = 8000;
@@ -12,6 +12,7 @@ const TIMEOUT_MS = 8000;
 
 export type Role = 'user' | 'guardian'; // user = 복약자
 export type CubeStatus = 'inserted' | 'removed';
+export type Period = 'morning' | 'noon' | 'evening'; // 복약 시간대 (아침/점심/저녁)
 
 export interface User {
   id: number;
@@ -49,6 +50,13 @@ export interface HistoryItem {
   method: string; // 예: "sensor"
 }
 
+// cube_slots 한 칸. 큐브의 칸 하나가 하루치 (cube_id 1~7)
+export interface CubeSlot {
+  cube_id: number;
+  target_date: string; // 예: "2026-10-10T15:00:00.000Z" → toLocalDate()로 변환
+  status: CubeStatus; // 칸이 지금 큐브에 들어 있는지(inserted)/빠져 있는지(removed). 약을 먹었는지는 history로 확인
+}
+
 // ───────────────────────── 공통 요청 ─────────────────────────
 
 export class ApiError extends Error {
@@ -62,7 +70,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'DELETE';
   body?: unknown;
 }
 
@@ -131,17 +139,26 @@ export const getGuardians = (userId: number) =>
 
 // ───────────────────────── 복약 일정 (schedule.js) ─────────────────────────
 
-export const createSchedule = (p: { user_id: number; time: string; period: string }) =>
-  request<{ ok: true; scheduleId: number }>('/api/schedule', { method: 'POST', body: p });
+// time은 '08:00'처럼 두 자리씩 쓴 24시간 형식. 같은 시간대(period)를 다시 보내면
+// 새 줄이 생기지 않고 시간만 바뀜 (응답의 updated가 true)
+export const createSchedule = (p: { user_id: number; time: string; period: Period }) =>
+  request<{ ok: true; scheduleId: number; updated: boolean }>('/api/schedule', { method: 'POST', body: p });
 
 export const getSchedules = (userId: number) =>
   request<{ ok: true; schedules: Schedule[] }>(`/api/schedule/${userId}`);
+
+export const deleteSchedule = (scheduleId: number) =>
+  request<{ ok: true }>(`/api/schedule/${scheduleId}`, { method: 'DELETE' });
 
 // ───────────────────────── 큐브 / 복약 기록 (cube.js, history.js) ─────────────────────────
 
 // 복약 시작일로 7일 코스 매핑. start_date는 todayLocal() 같은 'YYYY-MM-DD' 문자열
 export const setCubeMapping = (p: { user_id: number; start_date: string }) =>
   request<{ ok: true; message: string }>('/api/cube-mapping', { method: 'POST', body: p });
+
+// 현재 등록된 복약 기간(7칸). 등록된 적이 없으면 slots가 빈 배열
+export const getCubeSlots = (userId: number) =>
+  request<{ ok: true; slots: CubeSlot[] }>(`/api/cube-slots/${userId}`);
 
 // 보통은 ESP32가 호출하지만, 앱에서 수동 테스트할 때도 사용 가능. 복약 기간이 지나면 status 410
 export const updateCubeStatus = (p: { user_id: number; cube_id: number; status: CubeStatus }) =>

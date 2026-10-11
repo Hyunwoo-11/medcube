@@ -2,6 +2,12 @@ const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 
+// 서버(한국) 시간 기준 오늘 날짜 "YYYY-MM-DD".
+function todayLocal() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 // 사용자가 지정한 시작일부터 7일간 매핑
 router.post("/cube-mapping", async (req, res) => {
   const { user_id, start_date } = req.body; // start_date: "2026-10-03" 형식
@@ -29,11 +35,27 @@ router.post("/cube-mapping", async (req, res) => {
   }
 });
 
+// 현재 등록된 복약 기간(큐브 7칸)과 칸별 상태 조회. 앱의 일정 화면에서 사용
+router.get("/cube-slots/:userId", async (req, res) => {
+  const { userId } = req.params;
+
+  try {
+    const [rows] = await pool.query(
+      "SELECT cube_id, target_date, status FROM cube_slots WHERE user_id = ? ORDER BY cube_id",
+      [userId]
+    );
+    res.json({ ok: true, slots: rows });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "복약 기간 조회 실패" });
+  }
+});
+
 router.post("/cube-status", async (req, res) => {
   const { user_id, cube_id, status } = req.body;
 
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayLocal();
 
     // 1. user_id + cube_id + 오늘 날짜로 유효한 매핑인지 확인
     const [slotRows] = await pool.query(

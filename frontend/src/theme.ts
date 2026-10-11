@@ -16,6 +16,9 @@ export const colors = {
   bg: '#F3F7F6', // 살짝 민트빛이 도는 연한 회색
   surface: '#FFFFFF', // 카드
   danger: '#D6453D', // 미복약 표시
+  dangerLight: '#FCE9E7', // 빨간불 칸의 배경
+  ok: '#22A06B', // 큐브가 제자리에 있을 때의 초록불
+  okLight: '#E3F5EC', // 초록불 칸의 배경
   white: '#FFFFFF',
 
   // 하루 중 복약 시간대 색 (일정/현황 화면에서 사용 예정)
