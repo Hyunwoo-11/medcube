@@ -27,6 +27,10 @@ router.post("/signup", async (req, res) => {
 
     res.json({ ok: true, userId: result.insertId, invite_code });
   } catch (err) {
+    // 이미 가입된 이메일이면 (email 칼럼의 UNIQUE 제약에 걸림) 이유를 알려줌
+    if (err.code === "ER_DUP_ENTRY" && /email/.test(err.sqlMessage || "")) {
+      return res.status(409).json({ ok: false, error: "이미 가입된 이메일입니다" });
+    }
     console.error(err);
     res.status(500).json({ ok: false, error: "회원가입 실패" });
   }
