@@ -1,4 +1,5 @@
 require("dotenv").config();
+
 const express = require("express");
 const pool = require("./db");
 const authRoutes = require("./routes/auth");
@@ -6,6 +7,7 @@ const scheduleRoutes = require("./routes/schedule");
 const usersRoutes = require("./routes/users");
 const cubeRoutes = require("./routes/cube");
 const historyRoutes = require("./routes/history");
+const { startNotifier } = require("./services/notifier");
 
 const app = express();
 app.use(express.json());  
@@ -27,6 +29,7 @@ app.listen(process.env.PORT, async () => {
   try {
     await pool.query("SELECT 1");
     console.log("DB 연결 성공!");
+    startNotifier();
   } catch (err) {
     console.error("DB 연결 실패:", err.message);
   }

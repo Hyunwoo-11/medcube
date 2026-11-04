@@ -133,7 +133,7 @@ export default function SignupScreen() {
               autoCorrect={false}
               maxLength={6}
             />
-            <Text style={styles.help}>복약자의 홈 화면에 있는 6자리 코드예요</Text>
+            <Text style={styles.help}>복약자에게 받은 6자리 초대코드를 입력해 주세요</Text>
           </View>
         ) : (
           <Text style={styles.help}>가입하면 가족에게 보낼 수 있는 초대코드가 만들어져요</Text>
