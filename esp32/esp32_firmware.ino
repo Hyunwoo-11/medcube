@@ -1,78 +1,97 @@
-/*
-  복약지킴이 - ESP32 펌웨어 (프로토타입: 큐브 1개 기준)
-
-  하는 일 딱 3가지:
-  1. WiFi에 연결한다
-  2. 리드스위치 핀 값을 계속 확인한다 (큐브가 꽂혀있는지 빠졌는지)
-  3. 상태가 바뀌는 순간에만 서버로 HTTP POST를 보낸다
-
-  배선:
-  - 리드스위치 한쪽 다리 -> GPIO 4번 핀
-  - 리드스위치 다른쪽 다리 -> GND
-  - 자석은 큐브(빼는 부분) 바닥에 부착, 리드스위치는 약통 본체 쪽에 부착
-*/
-
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-// ---- 여기 3개만 본인 환경에 맞게 수정하세요 ----
-const char* WIFI_SSID = "your_wifi_name";
-const char* WIFI_PASSWORD = "your_wifi_password";
-const char* SERVER_URL = "http://192.168.0.10:3000/api/cube-status"; // 노트북의 로컬 IP:3000
+// ===== 설정 =====
+const char* WIFI_SSID = "YOUR_WIFI_NAME";
+const char* WIFI_PASS = "YOUR_WIFI_PASSWORD";
+const char* SERVER_URL = "YOUR_SERVER_IP:3000/api/cube-status";
 
-const int REED_PIN = 4;   // 리드스위치가 연결된 GPIO 번호
-const int CUBE_ID = 1;    // 이 보드가 담당하는 큐브 번호
+const int USER_ID = 1;
 
-// INPUT_PULLUP을 쓰면: 평소엔 HIGH(1), 자석이 가까워지면(큐브 꽂힘) LOW(0)
-bool lastPinWasHigh = true;
+// 칸 번호 = 배열 순서 + 1  (1=13, 2=14, 3=26, 4=25, 5=33, 6=22, 7=23)
+const int CUBE_PINS[] = {13, 14, 26, 25, 33, 22, 23};
+// ================
 
-void setup() {
-  Serial.begin(115200);
-  pinMode(REED_PIN, INPUT_PULLUP);
-  connectWiFi();
+const int CUBE_COUNT = sizeof(CUBE_PINS) / sizeof(CUBE_PINS[0]);
+const int BUZZER_PIN = 27;  // LOW일 때 울리는 부저 모듈
+
+const unsigned long HEARTBEAT_MS = 10000;  // 안 바뀌어도 10초마다 현재 상태 재전송
+const unsigned long DEBOUNCE_MS = 100;
+
+int stableState[CUBE_COUNT];          // LOW = 꽂힘(inserted), HIGH = 빠짐(removed)
+int lastReading[CUBE_COUNT];
+unsigned long lastChange[CUBE_COUNT];
+unsigned long lastSent[CUBE_COUNT];
+
+void beep(int ms) {
+  digitalWrite(BUZZER_PIN, LOW);
+  delay(ms);
+  digitalWrite(BUZZER_PIN, HIGH);
 }
 
-void connectWiFi() {
-  Serial.print("WiFi 연결 중");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+void connectWifi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.print("Connecting WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
   Serial.println();
-  Serial.print("WiFi 연결됨! ESP32 IP 주소: ");
+  Serial.print("IP: ");
   Serial.println(WiFi.localIP());
 }
 
-void loop() {
-  bool pinIsHigh = digitalRead(REED_PIN);
-
-  if (pinIsHigh != lastPinWasHigh) {
-    delay(50); // 짧은 흔들림(채터링) 방지
-    if (digitalRead(REED_PIN) == pinIsHigh) {
-      lastPinWasHigh = pinIsHigh;
-      String status = pinIsHigh ? "removed" : "inserted";
-      sendStatusToServer(status);
-    }
-  }
-
-  delay(200);
-}
-
-void sendStatusToServer(String status) {
+// idx: 0부터 시작하는 배열 번호 (칸 번호 = idx + 1)
+void sendState(int idx, int state) {
+  lastSent[idx] = millis();  // 실패해도 10초 뒤에 다시 시도하도록 먼저 기록
   if (WiFi.status() != WL_CONNECTED) {
-    connectWiFi();
+    Serial.println("WiFi lost, reconnecting");
+    WiFi.reconnect();
+    return;
   }
+  int cubeId = idx + 1;
+  const char* status = (state == LOW) ? "inserted" : "removed";
+  String body = String("{\"user_id\":") + USER_ID + ",\"cube_id\":" + cubeId +
+                ",\"status\":\"" + status + "\"}";
 
   HTTPClient http;
+  http.setTimeout(3000);
   http.begin(SERVER_URL);
   http.addHeader("Content-Type", "application/json");
-
-  String payload = "{\"cubeId\":" + String(CUBE_ID) + ",\"status\":\"" + status + "\"}";
-  Serial.println("서버로 전송: " + payload);
-
-  int httpCode = http.POST(payload);
-  Serial.println("서버 응답 코드: " + String(httpCode));
-
+  int code = http.POST(body);
+  Serial.printf("cube %d %s -> HTTP %d\n", cubeId, status, code);
+  if (code > 0) Serial.println(http.getString());
   http.end();
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, HIGH);  // HIGH = 꺼짐
+  for (int i = 0; i < CUBE_COUNT; i++) pinMode(CUBE_PINS[i], INPUT_PULLUP);
+  connectWifi();
+  for (int i = 0; i < CUBE_COUNT; i++) {
+    stableState[i] = digitalRead(CUBE_PINS[i]);
+    lastReading[i] = stableState[i];
+    lastChange[i] = millis();
+    sendState(i, stableState[i]);  // 켜자마자 각 칸의 현재 상태를 한 번 전송
+  }
+}
+
+void loop() {
+  for (int i = 0; i < CUBE_COUNT; i++) {
+    int reading = digitalRead(CUBE_PINS[i]);
+    if (reading != lastReading[i]) {
+      lastReading[i] = reading;
+      lastChange[i] = millis();
+    }
+    if (reading != stableState[i] && millis() - lastChange[i] > DEBOUNCE_MS) {
+      stableState[i] = reading;
+      if (reading == HIGH) beep(150);  // 꺼냄이면 삑
+      sendState(i, reading);
+    }
+    if (millis() - lastSent[i] > HEARTBEAT_MS) sendState(i, stableState[i]);
+  }
+  delay(10);
 }

@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 
-import { linkGuardian, Role, signup } from '../../api';
+import { checkInviteCode, linkGuardian, Role, signup } from '../../api';
 import { Button, Capsule, Field } from '../../components/ui';
 import { useSession } from '../../session';
 import { colors, radius } from '../../theme';
@@ -51,6 +51,16 @@ export default function SignupScreen() {
 
     setBusy(true);
     try {
+      // 보호자는 계정을 만들기 전에 초대코드부터 확인 (없는 코드면 가입하지 않고 안내만 보여줌)
+      if (isGuardian) {
+        try {
+          await checkInviteCode(inviteCode);
+        } catch (e) {
+          Alert.alert('초대코드 확인', errorMessage(e));
+          return;
+        }
+      }
+
       const res = await signup({ name: name.trim(), email: email.trim(), password, role });
 
       // 보호자는 가입 직후 초대코드로 복약자와 연결 (연결 API가 따로 있음)

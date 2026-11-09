@@ -2,7 +2,7 @@
 // 복약지킴이(MedCube) 백엔드 API 클라이언트
 //
 // 서버 주소는 frontend/.env.local 의 EXPO_PUBLIC_API_URL 로 지정합니다.
-//   예) EXPO_PUBLIC_API_URL=http://172.20.10.8:3000
+// 예) EXPO_PUBLIC_API_URL=http://172.20.10.8:3000
 // (핫스팟으로 테스트시 IP가 바뀌므로 이 한 줄만 고치면 됩니다. 값을 바꾼후 expo 재시작하기)
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
@@ -133,6 +133,10 @@ export const linkGuardian = (p: { guardianUserId: number; invite_code: string })
       invite_code: p.invite_code.trim().toUpperCase(), // 초대코드는 대문자+숫자만 사용
     },
   });
+
+// 가입 전에 초대코드가 있는지 확인 (없으면 서버가 404와 안내 문구를 보냄)
+export const checkInviteCode = (code: string) =>
+  request<{ ok: true }>(`/api/invite-code/${encodeURIComponent(code.trim().toUpperCase())}`);
 
 export const getGuardians = (userId: number) =>
   request<{ ok: true; guardians: Guardian[] }>(`/api/guardians/${userId}`);

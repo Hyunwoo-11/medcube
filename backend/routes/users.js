@@ -72,4 +72,24 @@ router.get("/guardians/:userId", async (req, res) => {
   }
 });
 
+// 4. 초대코드 확인 (보호자 가입 전에 앱이 부름. 복약자 이름은 돌려주지 않음)
+router.get("/invite-code/:code", async (req, res) => {
+  const code = String(req.params.code).trim().toUpperCase();
+  try {
+    const [rows] = await pool.query(
+      "SELECT id FROM users WHERE invite_code = ? AND role = 'user'",
+      [code]
+    );
+    if (rows.length === 0) {
+      return res
+        .status(404)
+        .json({ ok: false, error: "존재하지 않는 초대코드(복약자)입니다. 다시 입력해주세요." });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "초대코드 확인 실패" });
+  }
+});
+
 module.exports = router;
